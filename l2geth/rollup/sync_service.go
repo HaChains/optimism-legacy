@@ -22,6 +22,7 @@ import (
 
 	"github.com/ethereum-optimism/optimism/l2geth/eth/gasprice"
 	"github.com/ethereum-optimism/optimism/l2geth/rollup/fees"
+	"github.com/ethereum-optimism/optimism/l2geth/rollup/pause"
 	"github.com/ethereum-optimism/optimism/l2geth/rollup/rcfg"
 )
 
@@ -72,6 +73,7 @@ type SyncService struct {
 
 // NewSyncService returns an initialized sync service
 func NewSyncService(ctx context.Context, cfg Config, txpool *core.TxPool, bc *core.BlockChain, db ethdb.Database) (*SyncService, error) {
+	pause.Start(ctx)
 	if bc == nil {
 		return nil, errors.New("Must pass BlockChain to SyncService")
 	}
@@ -172,22 +174,22 @@ func NewSyncService(ctx context.Context, cfg Config, txpool *core.TxPool, bc *co
 			}
 		}
 
-		if !cfg.IsVerifier || cfg.Backend == BackendL2 {
-			// Wait until the remote service is done syncing
-			tStatus := time.NewTicker(10 * time.Second)
-			for ; true; <-tStatus.C {
-				status, err := service.client.SyncStatus(service.backend)
-				if err != nil {
-					log.Error("Cannot get sync status")
-					continue
-				}
-				if !status.Syncing {
-					tStatus.Stop()
-					break
-				}
-				log.Info("Still syncing", "index", status.CurrentTransactionIndex, "tip", status.HighestKnownTransactionIndex)
-			}
-		}
+		//if !cfg.IsVerifier || cfg.Backend == BackendL2 {
+		//	// Wait until the remote service is done syncing
+		//	tStatus := time.NewTicker(10 * time.Second)
+		//	for ; true; <-tStatus.C {
+		//		status, err := service.client.SyncStatus(service.backend)
+		//		if err != nil {
+		//			log.Error("Cannot get sync status")
+		//			continue
+		//		}
+		//		if !status.Syncing {
+		//			tStatus.Stop()
+		//			break
+		//		}
+		//		log.Info("Still syncing", "index", status.CurrentTransactionIndex, "tip", status.HighestKnownTransactionIndex)
+		//	}
+		//}
 
 		// Initialize the latest L1 data here to make sure that
 		// it happens before the RPC endpoints open up
@@ -622,8 +624,8 @@ func (s *SyncService) GasPriceOracleOwnerAddress() *common.Address {
 	return &s.gasPriceOracleOwnerAddress
 }
 
-/// Update the execution context's timestamp and blocknumber
-/// over time. This is only necessary for the sequencer.
+// / Update the execution context's timestamp and blocknumber
+// / over time. This is only necessary for the sequencer.
 func (s *SyncService) updateL1BlockNumber() error {
 	context, err := s.client.GetLatestEthContext()
 	if err != nil {
@@ -768,6 +770,10 @@ func (s *SyncService) applyIndexedTransaction(tx *types.Transaction) error {
 	log.Trace("Applying indexed transaction", "index", *index)
 	next := s.GetNextIndex()
 	if *index == next {
+		// MARK
+		if pause.RedisBehind(int64(next)) {
+			pause.PauseIfBehind("[SyncService sync batch]")
+		}
 		return s.applyTransactionToTip(tx)
 	}
 	if *index < next {

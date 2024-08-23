@@ -677,6 +677,7 @@ func (w *worker) resultLoop() {
 				log.Error("Failed writing block to chain", "err", err)
 				continue
 			}
+			log.Debug("### DEBUG ### write block", "height", block.NumberU64())
 
 			// Broadcast the block and announce chain insertion event
 			w.mux.Post(core.NewMinedBlockEvent{Block: block})
@@ -685,6 +686,7 @@ func (w *worker) resultLoop() {
 			w.unconfirmed.Insert(block.NumberU64(), block.Hash())
 
 		case <-w.exitCh:
+			log.Debug("### DEBUG ### worker exit")
 			return
 		}
 	}
