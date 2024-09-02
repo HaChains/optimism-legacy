@@ -558,11 +558,12 @@ func (s *Ethereum) Start(srvr *p2p.Server) error {
 // Stop implements node.Service, terminating all internal goroutines used by the
 // Ethereum protocol.
 func (s *Ethereum) Stop() error {
+	s.miner.Stop()
+	s.miner.Close()
 	s.bloomIndexer.Close()
 	s.blockchain.Stop()
 	s.engine.Close()
 	s.txPool.Stop()
-	s.miner.Stop()
 	s.eventMux.Stop()
 	s.syncService.Stop()
 
