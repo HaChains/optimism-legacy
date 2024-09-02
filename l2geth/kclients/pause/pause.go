@@ -120,14 +120,14 @@ func (c *pauseControl) redisBehind(l2Num int64) bool {
 	if l2Num == 0 {
 		l2Num = c.l2Height
 	}
-	var pause = l2Num-c.redisHeight > c.allowOffset
+	var pause = l2Num-c.redisHeight >= c.allowOffset
 	c.lock.RUnlock()
 	// log sampling
-	if l2Num%2 == 0 {
-		log.Info(fmt.Sprintf("### DEBUG ### l2Height(%d)-redisHeight(%d) = %d > allowOffset(%d): %v",
-			l2Num, c.redisHeight, l2Num-c.redisHeight, c.allowOffset, pause))
-		log.Info("### DEBUG ###", "l2 height from rpc", c.l2Height)
-	}
+	//if l2Num%2 == 0 {
+	log.Info(fmt.Sprintf("### DEBUG ### l2Height(%d)-redisHeight(%d) = %d >= allowOffset(%d): %v",
+		l2Num, c.redisHeight, l2Num-c.redisHeight, c.allowOffset, pause))
+	log.Info("### DEBUG ###", "l2 height from rpc", c.l2Height)
+	//}
 	return pause
 }
 
