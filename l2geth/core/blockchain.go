@@ -20,6 +20,7 @@ package core
 import (
 	"errors"
 	"fmt"
+	"github.com/ethereum-optimism/optimism/l2geth/kclients/util/env"
 	"io"
 	"math/big"
 	mrand "math/rand"
@@ -74,6 +75,8 @@ var (
 	errInsertionInterrupted = errors.New("insertion is interrupted")
 )
 
+var TriesInMemory uint64 = 128
+
 const (
 	bodyCacheLimit      = 256
 	blockCacheLimit     = 256
@@ -82,7 +85,7 @@ const (
 	maxFutureBlocks     = 256
 	maxTimeFutureBlocks = 30
 	badBlockLimit       = 10
-	TriesInMemory       = 512
+	//TriesInMemory       = 512
 
 	// BlockChainVersion ensures that an incompatible database forces a resync from scratch.
 	//
@@ -183,6 +186,12 @@ type BlockChain struct {
 // available in the database. It initialises the default Ethereum Validator and
 // Processor.
 func NewBlockChain(db ethdb.Database, cacheConfig *CacheConfig, chainConfig *params.ChainConfig, engine consensus.Engine, vmConfig vm.Config, shouldPreserve func(block *types.Block) bool) (*BlockChain, error) {
+	triesInMemory := env.LoadEnvInt64("TRIES_IN_MEMORY")
+	if triesInMemory == env.WrongInt {
+		return nil, errors.New("invalid config TRIES_IN_MEMORY")
+	}
+	TriesInMemory = uint64(triesInMemory)
+
 	if cacheConfig == nil {
 		cacheConfig = &CacheConfig{
 			TrieCleanLimit: 256,
@@ -1378,7 +1387,7 @@ func (bc *BlockChain) writeBlockWithState(block *types.Block, receipts []*types.
 					// If we're exceeding limits but haven't reached a large enough memory gap,
 					// warn the user that the system is becoming unstable.
 					if chosen < lastWrite+TriesInMemory && bc.gcproc >= 2*bc.cacheConfig.TrieTimeLimit {
-						log.Info("State in memory for too long, committing", "time", bc.gcproc, "allowance", bc.cacheConfig.TrieTimeLimit, "optimum", float64(chosen-lastWrite)/TriesInMemory)
+						log.Info("State in memory for too long, committing", "time", bc.gcproc, "allowance", bc.cacheConfig.TrieTimeLimit, "optimum", float64(chosen-lastWrite)/float64(TriesInMemory))
 					}
 					// Flush an entire trie and restart the counters
 					triedb.Commit(header.Root, true)
