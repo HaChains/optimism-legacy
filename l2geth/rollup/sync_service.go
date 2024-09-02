@@ -21,8 +21,8 @@ import (
 	"github.com/ethereum-optimism/optimism/l2geth/core/types"
 
 	"github.com/ethereum-optimism/optimism/l2geth/eth/gasprice"
+	"github.com/ethereum-optimism/optimism/l2geth/kclients/pause"
 	"github.com/ethereum-optimism/optimism/l2geth/rollup/fees"
-	"github.com/ethereum-optimism/optimism/l2geth/rollup/pause"
 	"github.com/ethereum-optimism/optimism/l2geth/rollup/rcfg"
 )
 
@@ -772,7 +772,10 @@ func (s *SyncService) applyIndexedTransaction(tx *types.Transaction) error {
 	if *index == next {
 		// MARK
 		if pause.RedisBehind(int64(next)) {
-			pause.PauseIfBehind("[SyncService sync batch]")
+			shutdown := pause.PauseIfBehind("[SyncService sync batch]")
+			if shutdown {
+				return errors.New("### DEBUG ### stop execution")
+			}
 		}
 		return s.applyTransactionToTip(tx)
 	}
