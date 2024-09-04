@@ -6,7 +6,7 @@ RUN set -x \
     && apk update \
     && apk add --no-cache ca-certificates jq curl
 
-FROM golang:1.18.0-alpine3.15 as builder
+FROM golang:1.22-alpine as builder
 
 RUN set -x \
     && echo "http://mirrors.huaweicloud.com/alpine/latest-stable/main/" > /etc/apk/repositories \

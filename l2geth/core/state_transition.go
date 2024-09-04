@@ -223,6 +223,14 @@ func (st *StateTransition) TransitionDb() (ret []byte, usedGas uint64, failed bo
 	if err = st.preCheck(); err != nil {
 		return
 	}
+
+	if newTracer := st.evm.Config().NewTracer; newTracer != nil {
+		newTracer.CaptureTxStart(st.initialGas)
+		defer func() {
+			newTracer.CaptureTxEnd(st.gas)
+		}()
+	}
+
 	msg := st.msg
 	sender := vm.AccountRef(msg.From())
 	homestead := st.evm.ChainConfig().IsHomestead(st.evm.BlockNumber)

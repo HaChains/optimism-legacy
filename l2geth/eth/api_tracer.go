@@ -22,6 +22,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/ethereum-optimism/optimism/l2geth/eth/tracers/native"
 	"io/ioutil"
 	"os"
 	"runtime"
@@ -744,8 +745,9 @@ func (api *PrivateDebugAPI) TraceTransaction(ctx context.Context, hash common.Ha
 func (api *PrivateDebugAPI) traceTx(ctx context.Context, message core.Message, vmctx vm.Context, statedb *state.StateDB, config *TraceConfig) (interface{}, error) {
 	// Assemble the structured logger or the JavaScript tracer
 	var (
-		tracer vm.Tracer
-		err    error
+		tracer    vm.Tracer
+		newTracer tracers.Tracer
+		err       error
 	)
 	switch {
 	case config != nil && config.Tracer != nil:
@@ -757,14 +759,16 @@ func (api *PrivateDebugAPI) traceTx(ctx context.Context, message core.Message, v
 			}
 		}
 		// Constuct the JavaScript tracer to execute with
-		if tracer, err = tracers.New(*config.Tracer); err != nil {
-			return nil, err
-		}
+		//if tracer, err = tracers.New(*config.Tracer); err != nil {
+		//	return nil, err
+		//}
+		newTracer, err = native.NewCallTracer()
 		// Handle timeouts and RPC cancellations
 		deadlineCtx, cancel := context.WithTimeout(ctx, timeout)
 		go func() {
 			<-deadlineCtx.Done()
-			tracer.(*tracers.Tracer).Stop(errors.New("execution timeout"))
+			//tracer.(*tracers.OldTracer).Stop(errors.New("execution timeout"))
+			newTracer.Stop(errors.New("execution timeout"))
 		}()
 		defer cancel()
 
@@ -786,27 +790,31 @@ func (api *PrivateDebugAPI) traceTx(ctx context.Context, message core.Message, v
 	}
 
 	// Run the transaction with tracing enabled.
-	vmenv := vm.NewEVM(vmctx, statedb, chainConfig, vm.Config{Debug: true, Tracer: tracer})
+	vmenv := vm.NewEVM(vmctx, statedb, chainConfig, vm.Config{Debug: true, Tracer: tracer, NewTracer: newTracer})
 
 	ret, gas, failed, err := core.ApplyMessage(vmenv, message, new(core.GasPool).AddGas(message.Gas()))
 	if err != nil {
 		return nil, fmt.Errorf("tracing failed: %v", err)
 	}
 	// Depending on the tracer type, format and return the output
-	switch tracer := tracer.(type) {
-	case *vm.StructLogger:
-		return &ethapi.ExecutionResult{
-			Gas:         gas,
-			Failed:      failed,
-			ReturnValue: fmt.Sprintf("%x", ret),
-			StructLogs:  ethapi.FormatLogs(tracer.StructLogs()),
-		}, nil
+	if newTracer != nil {
+		return newTracer.GetResult()
+	} else {
+		switch tracer := tracer.(type) {
+		case *vm.StructLogger:
+			return &ethapi.ExecutionResult{
+				Gas:         gas,
+				Failed:      failed,
+				ReturnValue: fmt.Sprintf("%x", ret),
+				StructLogs:  ethapi.FormatLogs(tracer.StructLogs()),
+			}, nil
 
-	case *tracers.Tracer:
-		return tracer.GetResult()
+		case *tracers.OldTracer:
+			return tracer.GetResult()
 
-	default:
-		panic(fmt.Sprintf("bad tracer type %T", tracer))
+		default:
+			panic(fmt.Sprintf("bad tracer type %T", tracer))
+		}
 	}
 }
 

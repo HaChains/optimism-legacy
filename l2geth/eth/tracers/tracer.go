@@ -96,7 +96,7 @@ func (mw *memoryWrapper) slice(begin, end int64) []byte {
 	if mw.memory.Len() < int(end) {
 		// TODO(karalabe): We can't js-throw from Go inside duktape inside Go. The Go
 		// runtime goes belly up https://github.com/golang/go/issues/15639.
-		log.Warn("Tracer accessed out of bound memory", "available", mw.memory.Len(), "offset", begin, "size", end-begin)
+		log.Warn("OldTracer accessed out of bound memory", "available", mw.memory.Len(), "offset", begin, "size", end-begin)
 		return nil
 	}
 	return mw.memory.GetCopy(begin, end-begin)
@@ -107,7 +107,7 @@ func (mw *memoryWrapper) getUint(addr int64) *big.Int {
 	if mw.memory.Len() < int(addr)+32 {
 		// TODO(karalabe): We can't js-throw from Go inside duktape inside Go. The Go
 		// runtime goes belly up https://github.com/golang/go/issues/15639.
-		log.Warn("Tracer accessed out of bound memory", "available", mw.memory.Len(), "offset", addr, "size", 32)
+		log.Warn("OldTracer accessed out of bound memory", "available", mw.memory.Len(), "offset", addr, "size", 32)
 		return new(big.Int)
 	}
 	return new(big.Int).SetBytes(mw.memory.GetPtr(addr, 32))
@@ -150,7 +150,7 @@ func (sw *stackWrapper) peek(idx int) *big.Int {
 	if len(sw.stack.Data()) <= idx {
 		// TODO(karalabe): We can't js-throw from Go inside duktape inside Go. The Go
 		// runtime goes belly up https://github.com/golang/go/issues/15639.
-		log.Warn("Tracer accessed out of bound stack", "size", len(sw.stack.Data()), "index", idx)
+		log.Warn("OldTracer accessed out of bound stack", "size", len(sw.stack.Data()), "index", idx)
 		return new(big.Int)
 	}
 	return sw.stack.Data()[len(sw.stack.Data())-idx-1]
@@ -274,9 +274,9 @@ func (cw *contractWrapper) pushObject(vm *duktape.Context) {
 	vm.PutPropString(obj, "getInput")
 }
 
-// Tracer provides an implementation of Tracer that evaluates a Javascript
+// OldTracer provides an implementation of Tracer that evaluates a Javascript
 // function for each VM execution step.
-type Tracer struct {
+type OldTracer struct {
 	inited bool // Flag whether the context was already inited from the EVM
 
 	vm *duktape.Context // Javascript VM instance
@@ -307,12 +307,12 @@ type Tracer struct {
 // New instantiates a new tracer instance. code specifies a Javascript snippet,
 // which must evaluate to an expression returning an object with 'step', 'fault'
 // and 'result' functions.
-func New(code string) (*Tracer, error) {
+func New(code string) (*OldTracer, error) {
 	// Resolve any tracers by name and assemble the tracer object
 	if tracer, ok := tracer(code); ok {
 		code = tracer
 	}
-	tracer := &Tracer{
+	tracer := &OldTracer{
 		vm:              duktape.New(),
 		ctx:             make(map[string]interface{}),
 		opWrapper:       new(opWrapper),
@@ -404,7 +404,7 @@ func New(code string) (*Tracer, error) {
 		if start < 0 || start > end || end > len(blob) {
 			// TODO(karalabe): We can't js-throw from Go inside duktape inside Go. The Go
 			// runtime goes belly up https://github.com/golang/go/issues/15639.
-			log.Warn("Tracer accessed out of bound memory", "available", len(blob), "offset", start, "size", size)
+			log.Warn("OldTracer accessed out of bound memory", "available", len(blob), "offset", start, "size", size)
 			ctx.PushFixedBuffer(0)
 			return 1
 		}
@@ -433,7 +433,7 @@ func New(code string) (*Tracer, error) {
 	}
 	tracer.vm.Pop()
 
-	// Tracer is valid, inject the big int library to access large numbers
+	// OldTracer is valid, inject the big int library to access large numbers
 	tracer.vm.EvalString(bigIntegerJS)
 	tracer.vm.PutGlobalString("bigInt")
 
@@ -488,14 +488,14 @@ func New(code string) (*Tracer, error) {
 }
 
 // Stop terminates execution of the tracer at the first opportune moment.
-func (jst *Tracer) Stop(err error) {
+func (jst *OldTracer) Stop(err error) {
 	jst.reason = err
 	atomic.StoreUint32(&jst.interrupt, 1)
 }
 
 // call executes a method on a JS object, catching any errors, formatting and
 // returning them as error objects.
-func (jst *Tracer) call(method string, args ...string) (json.RawMessage, error) {
+func (jst *OldTracer) call(method string, args ...string) (json.RawMessage, error) {
 	// Execute the JavaScript call and return any error
 	jst.vm.PushString(method)
 	for _, arg := range args {
@@ -516,8 +516,8 @@ func wrapError(context string, err error) error {
 	return fmt.Errorf("%v    in server-side tracer function '%v'", err, context)
 }
 
-// CaptureStart implements the Tracer interface to initialize the tracing operation.
-func (jst *Tracer) CaptureStart(from common.Address, to common.Address, create bool, input []byte, gas uint64, value *big.Int) error {
+// CaptureStart implements the OldTracer interface to initialize the tracing operation.
+func (jst *OldTracer) CaptureStart(from common.Address, to common.Address, create bool, input []byte, gas uint64, value *big.Int) error {
 	jst.ctx["type"] = "CALL"
 	if create {
 		jst.ctx["type"] = "CREATE"
@@ -531,8 +531,8 @@ func (jst *Tracer) CaptureStart(from common.Address, to common.Address, create b
 	return nil
 }
 
-// CaptureState implements the Tracer interface to trace a single step of VM execution.
-func (jst *Tracer) CaptureState(env *vm.EVM, pc uint64, op vm.OpCode, gas, cost uint64, memory *vm.Memory, stack *vm.Stack, contract *vm.Contract, depth int, err error) error {
+// CaptureState implements the OldTracer interface to trace a single step of VM execution.
+func (jst *OldTracer) CaptureState(env *vm.EVM, pc uint64, op vm.OpCode, gas, cost uint64, memory *vm.Memory, stack *vm.Stack, contract *vm.Contract, depth int, err error) error {
 	if jst.err == nil {
 		// Initialize the context if it wasn't done yet
 		if !jst.inited {
@@ -569,9 +569,9 @@ func (jst *Tracer) CaptureState(env *vm.EVM, pc uint64, op vm.OpCode, gas, cost 
 	return nil
 }
 
-// CaptureFault implements the Tracer interface to trace an execution fault
+// CaptureFault implements the OldTracer interface to trace an execution fault
 // while running an opcode.
-func (jst *Tracer) CaptureFault(env *vm.EVM, pc uint64, op vm.OpCode, gas, cost uint64, memory *vm.Memory, stack *vm.Stack, contract *vm.Contract, depth int, err error) error {
+func (jst *OldTracer) CaptureFault(env *vm.EVM, pc uint64, op vm.OpCode, gas, cost uint64, memory *vm.Memory, stack *vm.Stack, contract *vm.Contract, depth int, err error) error {
 	if jst.err == nil {
 		// Apart from the error, everything matches the previous invocation
 		jst.errorValue = new(string)
@@ -586,7 +586,7 @@ func (jst *Tracer) CaptureFault(env *vm.EVM, pc uint64, op vm.OpCode, gas, cost 
 }
 
 // CaptureEnd is called after the call finishes to finalize the tracing.
-func (jst *Tracer) CaptureEnd(output []byte, gasUsed uint64, t time.Duration, err error) error {
+func (jst *OldTracer) CaptureEnd(output []byte, gasUsed uint64, t time.Duration, err error) error {
 	jst.ctx["output"] = output
 	jst.ctx["gasUsed"] = gasUsed
 	jst.ctx["time"] = t.String()
@@ -598,7 +598,7 @@ func (jst *Tracer) CaptureEnd(output []byte, gasUsed uint64, t time.Duration, er
 }
 
 // GetResult calls the Javascript 'result' function and returns its value, or any accumulated error
-func (jst *Tracer) GetResult() (json.RawMessage, error) {
+func (jst *OldTracer) GetResult() (json.RawMessage, error) {
 	// Transform the context into a JavaScript object and inject into the state
 	obj := jst.vm.PushObject()
 
