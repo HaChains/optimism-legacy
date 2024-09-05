@@ -60,6 +60,7 @@ const (
 type TraceConfig struct {
 	*vm.LogConfig
 	Tracer  *string
+	Usenew  *bool
 	Timeout *string
 	Reexec  *uint64
 }
@@ -758,17 +759,22 @@ func (api *PrivateDebugAPI) traceTx(ctx context.Context, message core.Message, v
 				return nil, err
 			}
 		}
-		// Constuct the JavaScript tracer to execute with
-		//if tracer, err = tracers.New(*config.Tracer); err != nil {
-		//	return nil, err
-		//}
-		newTracer, err = native.NewCallTracer()
+		if config.Usenew != nil && *config.Usenew == true {
+			newTracer, err = native.NewCallTracer()
+		} else if tracer, err = tracers.New(*config.Tracer); err != nil {
+			// Constuct the JavaScript tracer to execute with
+			return nil, err
+		}
+
 		// Handle timeouts and RPC cancellations
 		deadlineCtx, cancel := context.WithTimeout(ctx, timeout)
 		go func() {
 			<-deadlineCtx.Done()
-			//tracer.(*tracers.OldTracer).Stop(errors.New("execution timeout"))
-			newTracer.Stop(errors.New("execution timeout"))
+			if config.Usenew != nil && *config.Usenew == true {
+				newTracer.Stop(errors.New("execution timeout"))
+			} else {
+				tracer.(*tracers.OldTracer).Stop(errors.New("execution timeout"))
+			}
 		}()
 		defer cancel()
 
