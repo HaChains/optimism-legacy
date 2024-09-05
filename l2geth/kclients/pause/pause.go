@@ -30,6 +30,9 @@ var (
 func redisBlockNumber() int64 {
 	// offset用于测试
 	//var offset int64 = 2493000
+	if pc.testRedisHeight != 0 {
+		return pc.testRedisHeight
+	}
 
 	if rdb == nil {
 		rdb = redis.NewFailoverClient(&redis.FailoverOptions{
@@ -57,11 +60,12 @@ func redisBlockNumber() int64 {
 var pc pauseControl
 
 type pauseControl struct {
-	ctx         context.Context
-	cli         *ethclient.Client
-	started     bool
-	allowOffset int64
-	testOffset  int64
+	ctx             context.Context
+	cli             *ethclient.Client
+	started         bool
+	allowOffset     int64
+	testOffset      int64
+	testRedisHeight int64
 	//l2Height    int64
 	nextHeight  int64
 	redisHeight int64
@@ -97,6 +101,10 @@ func Start(ctx context.Context) {
 	}
 	pc.testOffset = env.LoadEnvInt64(env.EnvTestOffset)
 	if pc.testOffset == env.WrongInt {
+		return
+	}
+	pc.testRedisHeight = env.LoadEnvInt64(env.EnvTestRedisHeight)
+	if pc.testRedisHeight == env.WrongInt {
 		return
 	}
 	pc.ctx = ctx
